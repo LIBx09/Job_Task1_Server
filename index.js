@@ -77,20 +77,29 @@ io.on("connection", (socket) => {
   });
 
   //Update Request
-  socket.on("update_task", async (updateId) => {
+  socket.on("update_task", async (updatedTask) => {
     try {
-      if (!updateId || typeof updateId !== "string") {
-        socket.emit("task_error", { message: "Invalid task ID" });
+      // Validate the input task
+      if (!updatedTask || typeof updatedTask._id !== "string") {
+        socket.emit("task_error", { message: "Invalid task ID or task data" });
         return;
       }
 
-      const { title, description, category } = updateId;
+      // Extract task details
+      const { _id, title, description, category } = updatedTask;
+
+      // Convert _id to ObjectId
+      const objectId = new ObjectId(_id);
+
+      // Perform the update in the database
       const result = await jobTaskCollections.updateOne(
-        { _id: ObjectId(updateId._id) },
+        { _id: objectId }, // Ensure _id is converted to an ObjectId
         { $set: { title, description, category } }
       );
+
+      // If the task was updated, emit success and updated tasks
       if (result.modifiedCount > 0) {
-        console.log("✅ Task updated:", updateId._id);
+        console.log("✅ Task updated:", _id);
         const tasks = await jobTaskCollections.find().toArray();
         io.emit("tasksUpdated", tasks); // Send updated task list to all clients
       } else {
