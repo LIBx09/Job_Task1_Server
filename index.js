@@ -48,6 +48,28 @@ connectDB();
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
+  //users collection related api
+  //Post Request
+  socket.on("add_user", async (newUser) => {
+    try {
+      const result = await usersCollections.insertOne(newUser);
+      // console.log(task);
+      if (result.acknowledged) {
+        // Notify all clients
+        io.emit("user_added", { message: "New User Added", newUser });
+
+        // Send confirmation to sender
+        socket.emit("user_added_successfully", {
+          message: "User Added Successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error adding user:", error);
+      socket.emit("task_error", { message: "Failed to add user" });
+    }
+  });
+
+  //jobs task collection related api
   //Delete Request
 
   socket.on("delete_task", async (taskId) => {
@@ -77,6 +99,7 @@ io.on("connection", (socket) => {
   });
 
   //Update Request
+
   socket.on("update_task", async (updatedTask) => {
     try {
       // Validate the input task
@@ -93,23 +116,30 @@ io.on("connection", (socket) => {
 
       // Perform the update in the database
       const result = await jobTaskCollections.updateOne(
-        { _id: objectId }, // Ensure _id is converted to an ObjectId
-        { $set: { title, description, category } }
+        { _id: objectId }, // Find task by ID
+        { $set: { title, description, category } } // Update fields
       );
 
-      // If the task was updated, emit success and updated tasks
-      if (result.modifiedCount > 0) {
-        console.log("✅ Task updated:", _id);
-        const tasks = await jobTaskCollections.find().toArray();
-        io.emit("tasksUpdated", tasks); // Send updated task list to all clients
-      } else {
-        socket.emit("task_update_error", {
-          message: "Task not found or unchanged",
+      // Check if the update was acknowledged and modified
+      if (result.modifiedCount === 0) {
+        socket.emit("task_error", {
+          message: "Task update failed or no changes made",
         });
+        return;
       }
+
+      // Fetch the updated task from the database
+      const updatedTaskFromDB = await jobTaskCollections.findOne({
+        _id: objectId,
+      });
+
+      // Emit the updated task to all connected clients
+      socket.emit("task_updated", updatedTaskFromDB);
     } catch (error) {
-      console.error("❌ Error updating task:", error);
-      socket.emit("task_update_error", { message: "Failed to update task" });
+      console.error("Error updating task:", error);
+      socket.emit("task_error", {
+        message: "Server error while updating task",
+      });
     }
   });
 
@@ -117,7 +147,7 @@ io.on("connection", (socket) => {
   socket.on("getting_task", async () => {
     try {
       const tasks = await jobTaskCollections.find().toArray();
-      console.log("55", tasks);
+      // console.log("55", tasks);
       socket.emit("task_data", { tasks });
     } catch (error) {
       console.error("Error getting tasks:", error);
